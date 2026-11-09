@@ -32,3 +32,22 @@ class GitHubIssue(BaseModel):
     @classmethod
     def assignee_to_bool(cls, value):
         return value is not None
+
+
+class GitHubLicense(BaseModel):
+    spdx_id: str | None
+
+
+class GitHubRepository(BaseModel):
+    id: int
+    full_name: str
+    html_url: str
+    language: str | None
+    stargazers_count: int
+    forks_count: int
+    open_issues_count: int
+    pushed_at: datetime
+    created_at: datetime
+    archived: bool
+    has_issues: bool
+    license: GitHubLicense | None = None
