@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     github_user_agent: str = "issue-pulse/0.1 (+https://github.com/simon-dutka/issue-pulse)"
     # Overridable so tests can point the client at a fake server.
     github_api_url: str = "https://api.github.com"
+    github_min_remaining_requests: int = 20
 
     # ignore unknown variables in .env
     model_config = SettingsConfigDict(
