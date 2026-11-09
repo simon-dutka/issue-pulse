@@ -1,0 +1,16 @@
+# Virtual environment
+.venv/
+
+# Secrets
+.env
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Tool caches
+.ruff_cache/
+.pytest_cache/
+
+# macOS
+.DS_Store
