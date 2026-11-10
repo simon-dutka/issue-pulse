@@ -77,3 +77,19 @@ def test_get_raises_api_error_on_non_rate_limit_failure(make_client, status_code
     client = make_client(handler)
     with pytest.raises(GitHubAPIError):
         client._get("/rate_limit")
+
+
+def test_get_stores_rate_limit_from_headers(make_client):
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={},
+            headers={"X-RateLimit-Remaining": "4000", "X-RateLimit-Reset": "1700000000"},
+        )
+
+    client = make_client(handler)
+
+    client._get("/rate_limit")
+
+    assert client._remaining == 4000
+    assert client._reset_at == datetime.fromtimestamp(1700000000, tz=UTC)
