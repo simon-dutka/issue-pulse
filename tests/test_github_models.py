@@ -36,3 +36,18 @@ def test_issue_model_drops_body(issue_data):
     issue = GitHubIssue.model_validate(issue_data)
 
     assert "body" not in issue.model_dump()
+
+
+@pytest.mark.parametrize(
+    "assignee_input, expected",
+    [
+        (None, False),
+        ({"type": "User"}, True),
+    ],
+)
+def test_issue_model_converts_assignee_to_bool(issue_data, assignee_input, expected):
+    issue_data["assignee"] = assignee_input
+
+    issue = GitHubIssue.model_validate(issue_data)
+
+    assert issue.assignee == expected
