@@ -93,3 +93,24 @@ def test_get_stores_rate_limit_from_headers(make_client):
 
     assert client._remaining == 4000
     assert client._reset_at == datetime.fromtimestamp(1700000000, tz=UTC)
+
+
+def test_get_sends_auth_and_user_agent_headers(make_client):
+    received = []
+
+    def handler(request):
+        received.append(request)
+        return httpx.Response(
+            200,
+            json={},
+        )
+
+    client = make_client(handler)
+
+    client._get("/rate_limit")
+
+    sent = received[0]
+
+    assert sent.headers["Authorization"] == f"Bearer {TEST_TOKEN}"
+
+    assert "issue-pulse" in sent.headers["User-Agent"]
