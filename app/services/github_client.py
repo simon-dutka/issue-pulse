@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import httpx
 
 from app.core.config import Settings, get_settings
@@ -16,9 +18,26 @@ class GithubClient:
         }
 
         self._client = httpx.Client(base_url=settings.github_api_url, headers=headers, timeout=30)
+        self._min_remaining = settings.github_min_remaining_requests
+        self._remaining = None
+        self._reset_at = None
 
     def close(self):
         self._client.close()
+
+    def _get(self, path: str, params: dict | None = None) -> httpx.Response:
+        response = self._client.get(path, params=params)
+        remaining = response.headers.get("X-RateLimit-Remaining")
+
+        if remaining is not None:
+            self._remaining = int(remaining)
+
+        reset = response.headers.get("X-RateLimit-Reset")
+
+        if reset is not None:
+            self._reset_at = datetime.fromtimestamp(int(reset), tz=UTC)
+
+        return response
 
     def __enter__(self):
         return self
