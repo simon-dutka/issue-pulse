@@ -5,7 +5,7 @@ import pytest
 
 from app.core.config import Settings
 from app.services.github_client import GithubClient
-from app.services.github_errors import GitHubNotFound, RateLimitExceeded
+from app.services.github_errors import GitHubAPIError, GitHubNotFound, RateLimitExceeded
 
 TEST_TOKEN = "test-token"
 
@@ -60,3 +60,20 @@ def test_get_raises_rate_limit_when_quota_exhausted(make_client, status_code):
         client._get("/rate_limit")
 
     assert exc_info.value.reset_at == datetime.fromtimestamp(1700000000, tz=UTC)
+
+
+@pytest.mark.parametrize(
+    "status_code",
+    [403, 500],
+)
+def test_get_raises_api_error_on_non_rate_limit_failure(make_client, status_code):
+    def handler(request):
+        return httpx.Response(
+            status_code,
+            json={},
+            headers={"X-RateLimit-Remaining": "4000"},
+        )
+
+    client = make_client(handler)
+    with pytest.raises(GitHubAPIError):
+        client._get("/rate_limit")
