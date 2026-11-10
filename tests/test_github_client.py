@@ -112,5 +112,26 @@ def test_get_sends_auth_and_user_agent_headers(make_client):
     sent = received[0]
 
     assert sent.headers["Authorization"] == f"Bearer {TEST_TOKEN}"
-
     assert "issue-pulse" in sent.headers["User-Agent"]
+
+
+def test_get_blocks_request_when_remaining_below_threshold(make_client):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+
+        return httpx.Response(
+            200,
+            json={},
+            headers={"X-RateLimit-Remaining": "5", "X-RateLimit-Reset": "1700000000"},
+        )
+
+    client = make_client(handler)
+
+    client._get("/rate_limit")
+
+    with pytest.raises(RateLimitExceeded):
+        client._get("/rate_limit")
+
+    assert len(calls) == 1
