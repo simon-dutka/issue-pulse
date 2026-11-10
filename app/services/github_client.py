@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import httpx
 
 from app.core.config import Settings, get_settings
+from app.schemas.github import GitHubRepository
 from app.services.github_errors import GitHubAPIError, GitHubNotFound, RateLimitExceeded
 
 
@@ -53,6 +54,10 @@ class GitHubClient:
             raise GitHubAPIError(f"{path}: {response.status_code}")
 
         return response
+
+    def get_repository(self, owner: str, repo: str) -> GitHubRepository:
+        response = self._get(f"/repos/{owner}/{repo}")
+        return GitHubRepository.model_validate(response.json())
 
     def __enter__(self):
         return self
