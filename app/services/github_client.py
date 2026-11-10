@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.services.github_errors import RateLimitExceeded
+from app.services.github_errors import GitHubAPIError, GitHubNotFound, RateLimitExceeded
 
 
 class GithubClient:
@@ -40,6 +40,13 @@ class GithubClient:
 
         if reset is not None:
             self._reset_at = datetime.fromtimestamp(int(reset), tz=UTC)
+
+        if response.status_code == 404:
+            raise GitHubNotFound(f"{path}: {response.status_code}")
+        if response.status_code in (403, 429) and self._remaining == 0:
+            raise RateLimitExceeded(self._reset_at)
+        if response.status_code >= 400:
+            raise GitHubAPIError(f"{path}: {response.status_code}")
 
         return response
 
