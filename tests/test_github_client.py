@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.core.config import Settings
-from app.services.github_client import GithubClient
+from app.services.github_client import GitHubClient
 from app.services.github_errors import GitHubAPIError, GitHubNotFound, RateLimitExceeded
 
 TEST_TOKEN = "test-token"
@@ -16,7 +16,7 @@ def make_client():
         settings = Settings(github_token=TEST_TOKEN, _env_file=None)
         transport = httpx.MockTransport(handler)
 
-        return GithubClient(settings, transport=transport)
+        return GitHubClient(settings, transport=transport)
 
     return _make
 

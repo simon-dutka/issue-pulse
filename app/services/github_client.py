@@ -6,7 +6,7 @@ from app.core.config import Settings, get_settings
 from app.services.github_errors import GitHubAPIError, GitHubNotFound, RateLimitExceeded
 
 
-class GithubClient:
+class GitHubClient:
     def __init__(
         self, settings: Settings | None = None, transport: httpx.BaseTransport | None = None
     ):
