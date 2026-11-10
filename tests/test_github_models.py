@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from app.schemas.github import GitHubIssue
 
@@ -65,3 +66,10 @@ def test_issue_model_keeps_pull_request(issue_data):
     issue = GitHubIssue.model_validate(issue_data)
 
     assert issue.pull_request == {"url": "x"}
+
+
+def test_issue_model_rejects_invalid_comments(issue_data):
+    issue_data["comments"] = "abc"
+
+    with pytest.raises(ValidationError):
+        GitHubIssue.model_validate(issue_data)
