@@ -51,3 +51,17 @@ def test_issue_model_converts_assignee_to_bool(issue_data, assignee_input, expec
     issue = GitHubIssue.model_validate(issue_data)
 
     assert issue.assignee == expected
+
+
+def test_issue_model_pull_request_defaults_to_none(issue_data):
+    issue = GitHubIssue.model_validate(issue_data)
+
+    assert issue.pull_request is None
+
+
+def test_issue_model_keeps_pull_request(issue_data):
+    issue_data["pull_request"] = {"url": "x"}
+
+    issue = GitHubIssue.model_validate(issue_data)
+
+    assert issue.pull_request == {"url": "x"}
