@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import httpx
 
 from app.core.config import Settings, get_settings
+from app.services.github_errors import RateLimitExceeded
 
 
 class GithubClient:
@@ -26,6 +27,9 @@ class GithubClient:
         self._client.close()
 
     def _get(self, path: str, params: dict | None = None) -> httpx.Response:
+        if self._remaining is not None and self._remaining < self._min_remaining:
+            raise RateLimitExceeded(self._reset_at)
+
         response = self._client.get(path, params=params)
         remaining = response.headers.get("X-RateLimit-Remaining")
 
