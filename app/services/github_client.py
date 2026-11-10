@@ -7,7 +7,9 @@ from app.services.github_errors import GitHubAPIError, GitHubNotFound, RateLimit
 
 
 class GithubClient:
-    def __init__(self, settings: Settings | None = None):
+    def __init__(
+        self, settings: Settings | None = None, transport: httpx.BaseTransport | None = None
+    ):
         if settings is None:
             settings = get_settings()
 
@@ -18,7 +20,9 @@ class GithubClient:
             "User-Agent": settings.github_user_agent,
         }
 
-        self._client = httpx.Client(base_url=settings.github_api_url, headers=headers, timeout=30)
+        self._client = httpx.Client(
+            base_url=settings.github_api_url, headers=headers, timeout=30, transport=transport
+        )
         self._min_remaining = settings.github_min_remaining_requests
         self._remaining = None
         self._reset_at = None
