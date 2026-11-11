@@ -37,20 +37,32 @@ class GitHubClient:
             raise RateLimitExceeded(self._reset_at)
 
         response = self._client.get(path, params=params)
-        remaining = response.headers.get("X-RateLimit-Remaining")
 
-        if remaining is not None:
-            self._remaining = int(remaining)
+        remaining_header = response.headers.get("X-RateLimit-Remaining")
+        reset_header = response.headers.get("X-RateLimit-Reset")
 
-        reset = response.headers.get("X-RateLimit-Reset")
+        remaining = None
 
-        if reset is not None:
-            self._reset_at = datetime.fromtimestamp(int(reset), tz=UTC)
+        if remaining_header is not None:
+            remaining = int(remaining_header)
+
+        reset_at = None
+
+        if reset_header is not None:
+            reset_at = datetime.fromtimestamp(int(reset_header), tz=UTC)
+
+        resource = response.headers.get("X-RateLimit-Resource")
+
+        if resource is None or resource == "core":
+            if remaining is not None:
+                self._remaining = remaining
+            if reset_at is not None:
+                self._reset_at = reset_at
 
         if response.status_code == 404:
             raise GitHubNotFound(f"{path}: {response.status_code}")
-        if response.status_code in (403, 429) and self._remaining == 0:
-            raise RateLimitExceeded(self._reset_at)
+        if response.status_code in (403, 429) and remaining == 0:
+            raise RateLimitExceeded(reset_at)
         if response.status_code >= 400:
             raise GitHubAPIError(f"{path}: {response.status_code}")
 
