@@ -135,3 +135,39 @@ def test_get_blocks_request_when_remaining_below_threshold(make_client):
         client._get("/rate_limit")
 
     assert len(calls) == 1
+
+
+@pytest.fixture
+def repo_data():
+    data = {
+        "id": 1,
+        "full_name": "psf/requests",
+        "html_url": "https://github.com/psf/requests",
+        "language": "Python",
+        "stargazers_count": 100,
+        "forks_count": 10,
+        "open_issues_count": 5,
+        "pushed_at": "2026-01-02T10:00:00Z",
+        "created_at": "2026-01-01T10:00:00Z",
+        "archived": False,
+        "has_issues": True,
+        "description": "ignored",
+    }
+
+    return data
+
+
+def test_get_repository_returns_parsed_model(make_client, repo_data):
+    received = []
+
+    def handler(request):
+        received.append(request)
+
+        return httpx.Response(200, json=repo_data)
+
+    client = make_client(handler)
+
+    repository = client.get_repository("psf", "requests")
+
+    assert repository.full_name == repo_data["full_name"]
+    assert received[0].url.path == "/repos/psf/requests"
