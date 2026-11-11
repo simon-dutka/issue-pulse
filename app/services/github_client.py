@@ -1,9 +1,10 @@
+from collections.abc import Iterator
 from datetime import UTC, datetime
 
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.schemas.github import GitHubRepository
+from app.schemas.github import GitHubIssue, GitHubRepository
 from app.services.github_errors import GitHubAPIError, GitHubNotFound, RateLimitExceeded
 
 
@@ -58,6 +59,34 @@ class GitHubClient:
     def get_repository(self, owner: str, repo: str) -> GitHubRepository:
         response = self._get(f"/repos/{owner}/{repo}")
         return GitHubRepository.model_validate(response.json())
+
+    def fetch_issues(
+        self, owner: str, repo: str, since: datetime | None = None
+    ) -> Iterator[GitHubIssue]:
+        path = f"/repos/{owner}/{repo}/issues"
+
+        params = {"state": "all", "sort": "updated", "direction": "desc", "per_page": 100}
+
+        if since is not None:
+            params["since"] = since.isoformat()
+
+        while path is not None:
+            response = self._get(path, params)
+
+            for item in response.json():
+                issue = GitHubIssue.model_validate(item)
+
+                if issue.pull_request is None:
+                    yield issue
+
+            next_link = response.links.get("next")
+
+            if next_link is not None:
+                path = next_link["url"]
+            else:
+                path = None
+
+            params = None
 
     def __enter__(self):
         return self
