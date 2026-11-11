@@ -171,3 +171,51 @@ def test_get_repository_returns_parsed_model(make_client, repo_data):
 
     assert repository.full_name == repo_data["full_name"]
     assert received[0].url.path == "/repos/psf/requests"
+
+
+def make_issue(number, is_pr=False):
+    data = {
+        "id": number,
+        "number": number,
+        "title": f"Issue {number}",
+        "state": "open",
+        "comments": 0,
+        "created_at": "2026-01-01T10:00:00Z",
+        "updated_at": "2026-01-02T10:00:00Z",
+        "closed_at": None,
+        "html_url": f"https://github.com/o/r/issues/{number}",
+        "author_association": "NONE",
+        "state_reason": None,
+        "user": {"type": "User"},
+        "labels": [],
+        "assignee": None,
+    }
+
+    if is_pr:
+        data["pull_request"] = {"url": "x"}
+
+    return data
+
+
+def test_fetch_issues_follows_pagination_and_skips_pull_requests(make_client):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+
+        page_number = request.url.params.get("page")
+
+        if page_number == "2":
+            return httpx.Response(200, json=[make_issue(3)])
+        else:
+            return httpx.Response(
+                200,
+                json=[make_issue(1), make_issue(2, is_pr=True)],
+                headers={"Link": '<https://api.github.com/repos/o/r/issues?page=2>; rel="next"'},
+            )
+
+    client = make_client(handler)
+    numbers = [issue.number for issue in client.fetch_issues("o", "r")]
+
+    assert numbers == [1, 3]
+    assert len(requests) == 2
