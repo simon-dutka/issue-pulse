@@ -219,3 +219,28 @@ def test_fetch_issues_follows_pagination_and_skips_pull_requests(make_client):
 
     assert numbers == [1, 3]
     assert len(requests) == 2
+
+
+def test_fetch_issues_sends_query_params(make_client):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+
+        return httpx.Response(
+            200,
+            json=[],
+        )
+
+    client = make_client(handler)
+    since = datetime(2026, 1, 1, tzinfo=UTC)
+
+    list(client.fetch_issues("o", "r", since=since))
+
+    params = requests[0].url.params
+
+    assert params["state"] == "all"
+    assert params["sort"] == "updated"
+    assert params["direction"] == "desc"
+    assert params["per_page"] == "100"
+    assert params["since"] == "2026-01-01T00:00:00+00:00"
