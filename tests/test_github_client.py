@@ -244,3 +244,39 @@ def test_fetch_issues_sends_query_params(make_client):
     assert params["direction"] == "desc"
     assert params["per_page"] == "100"
     assert params["since"] == "2026-01-01T00:00:00+00:00"
+
+
+def test_get_ignores_rate_limit_state_of_search_resource(make_client):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+
+        if request.url.path == "/core":
+            return httpx.Response(
+                200,
+                json={},
+                headers={
+                    "X-RateLimit-Remaining": "4000",
+                    "X-RateLimit-Reset": "1700000000",
+                    "X-RateLimit-Resource": "core",
+                },
+            )
+        else:
+            return httpx.Response(
+                200,
+                json={},
+                headers={
+                    "X-RateLimit-Remaining": "5",
+                    "X-RateLimit-Reset": "1700000060",
+                    "X-RateLimit-Resource": "search",
+                },
+            )
+
+    client = make_client(handler)
+
+    client._get("/core")
+    client._get("/search")
+
+    assert client._remaining == 4000
+    assert client._reset_at == datetime.fromtimestamp(1700000000, tz=UTC)
