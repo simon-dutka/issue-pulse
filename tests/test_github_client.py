@@ -203,6 +203,9 @@ def test_fetch_issues_follows_pagination_and_skips_pull_requests(make_client):
     def handler(request):
         requests.append(request)
 
+        if len(requests) > 5:
+            raise AssertionError("pagination did not stop")
+
         page_number = request.url.params.get("page")
 
         if page_number == "2":
