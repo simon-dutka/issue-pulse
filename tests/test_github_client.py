@@ -280,3 +280,27 @@ def test_get_ignores_rate_limit_state_of_search_resource(make_client):
 
     assert client._remaining == 4000
     assert client._reset_at == datetime.fromtimestamp(1700000000, tz=UTC)
+
+
+def test_get_raises_rate_limit_for_search_resource(make_client):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+
+        return httpx.Response(
+            403,
+            json={},
+            headers={
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": "1700000060",
+                "X-RateLimit-Resource": "search",
+            },
+        )
+
+    client = make_client(handler)
+
+    with pytest.raises(RateLimitExceeded) as exc_info:
+        client._get("/search")
+
+    assert exc_info.value.reset_at == datetime.fromtimestamp(1700000060, tz=UTC)
