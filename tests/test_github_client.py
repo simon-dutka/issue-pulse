@@ -135,3 +135,172 @@ def test_get_blocks_request_when_remaining_below_threshold(make_client):
         client._get("/rate_limit")
 
     assert len(calls) == 1
+
+
+@pytest.fixture
+def repo_data():
+    data = {
+        "id": 1,
+        "full_name": "psf/requests",
+        "html_url": "https://github.com/psf/requests",
+        "language": "Python",
+        "stargazers_count": 100,
+        "forks_count": 10,
+        "open_issues_count": 5,
+        "pushed_at": "2026-01-02T10:00:00Z",
+        "created_at": "2026-01-01T10:00:00Z",
+        "archived": False,
+        "has_issues": True,
+        "description": "ignored",
+    }
+
+    return data
+
+
+def test_get_repository_returns_parsed_model(make_client, repo_data):
+    received = []
+
+    def handler(request):
+        received.append(request)
+
+        return httpx.Response(200, json=repo_data)
+
+    client = make_client(handler)
+
+    repository = client.get_repository("psf", "requests")
+
+    assert repository.full_name == repo_data["full_name"]
+    assert received[0].url.path == "/repos/psf/requests"
+
+
+def make_issue(number, is_pr=False):
+    data = {
+        "id": number,
+        "number": number,
+        "title": f"Issue {number}",
+        "state": "open",
+        "comments": 0,
+        "created_at": "2026-01-01T10:00:00Z",
+        "updated_at": "2026-01-02T10:00:00Z",
+        "closed_at": None,
+        "html_url": f"https://github.com/o/r/issues/{number}",
+        "author_association": "NONE",
+        "state_reason": None,
+        "user": {"type": "User"},
+        "labels": [],
+        "assignee": None,
+    }
+
+    if is_pr:
+        data["pull_request"] = {"url": "x"}
+
+    return data
+
+
+def test_fetch_issues_follows_pagination_and_skips_pull_requests(make_client):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+
+        page_number = request.url.params.get("page")
+
+        if page_number == "2":
+            return httpx.Response(200, json=[make_issue(3)])
+        else:
+            return httpx.Response(
+                200,
+                json=[make_issue(1), make_issue(2, is_pr=True)],
+                headers={"Link": '<https://api.github.com/repos/o/r/issues?page=2>; rel="next"'},
+            )
+
+    client = make_client(handler)
+    numbers = [issue.number for issue in client.fetch_issues("o", "r")]
+
+    assert numbers == [1, 3]
+    assert len(requests) == 2
+
+
+def test_fetch_issues_sends_query_params(make_client):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+
+        return httpx.Response(
+            200,
+            json=[],
+        )
+
+    client = make_client(handler)
+    since = datetime(2026, 1, 1, tzinfo=UTC)
+
+    list(client.fetch_issues("o", "r", since=since))
+
+    params = requests[0].url.params
+
+    assert params["state"] == "all"
+    assert params["sort"] == "updated"
+    assert params["direction"] == "desc"
+    assert params["per_page"] == "100"
+    assert params["since"] == "2026-01-01T00:00:00+00:00"
+
+
+def test_get_ignores_rate_limit_state_of_search_resource(make_client):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+
+        if request.url.path == "/core":
+            return httpx.Response(
+                200,
+                json={},
+                headers={
+                    "X-RateLimit-Remaining": "4000",
+                    "X-RateLimit-Reset": "1700000000",
+                    "X-RateLimit-Resource": "core",
+                },
+            )
+        else:
+            return httpx.Response(
+                200,
+                json={},
+                headers={
+                    "X-RateLimit-Remaining": "5",
+                    "X-RateLimit-Reset": "1700000060",
+                    "X-RateLimit-Resource": "search",
+                },
+            )
+
+    client = make_client(handler)
+
+    client._get("/core")
+    client._get("/search")
+
+    assert client._remaining == 4000
+    assert client._reset_at == datetime.fromtimestamp(1700000000, tz=UTC)
+
+
+def test_get_raises_rate_limit_for_search_resource(make_client):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+
+        return httpx.Response(
+            403,
+            json={},
+            headers={
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": "1700000060",
+                "X-RateLimit-Resource": "search",
+            },
+        )
+
+    client = make_client(handler)
+
+    with pytest.raises(RateLimitExceeded) as exc_info:
+        client._get("/search")
+
+    assert exc_info.value.reset_at == datetime.fromtimestamp(1700000060, tz=UTC)

@@ -1,8 +1,10 @@
+from collections.abc import Iterator
 from datetime import UTC, datetime
 
 import httpx
 
 from app.core.config import Settings, get_settings
+from app.schemas.github import GitHubIssue, GitHubRepository
 from app.services.github_errors import GitHubAPIError, GitHubNotFound, RateLimitExceeded
 
 
@@ -35,24 +37,68 @@ class GitHubClient:
             raise RateLimitExceeded(self._reset_at)
 
         response = self._client.get(path, params=params)
-        remaining = response.headers.get("X-RateLimit-Remaining")
 
-        if remaining is not None:
-            self._remaining = int(remaining)
+        remaining_header = response.headers.get("X-RateLimit-Remaining")
+        reset_header = response.headers.get("X-RateLimit-Reset")
 
-        reset = response.headers.get("X-RateLimit-Reset")
+        remaining = None
 
-        if reset is not None:
-            self._reset_at = datetime.fromtimestamp(int(reset), tz=UTC)
+        if remaining_header is not None:
+            remaining = int(remaining_header)
+
+        reset_at = None
+
+        if reset_header is not None:
+            reset_at = datetime.fromtimestamp(int(reset_header), tz=UTC)
+
+        resource = response.headers.get("X-RateLimit-Resource")
+
+        if resource is None or resource == "core":
+            if remaining is not None:
+                self._remaining = remaining
+            if reset_at is not None:
+                self._reset_at = reset_at
 
         if response.status_code == 404:
             raise GitHubNotFound(f"{path}: {response.status_code}")
-        if response.status_code in (403, 429) and self._remaining == 0:
-            raise RateLimitExceeded(self._reset_at)
+        if response.status_code in (403, 429) and remaining == 0:
+            raise RateLimitExceeded(reset_at)
         if response.status_code >= 400:
             raise GitHubAPIError(f"{path}: {response.status_code}")
 
         return response
+
+    def get_repository(self, owner: str, repo: str) -> GitHubRepository:
+        response = self._get(f"/repos/{owner}/{repo}")
+        return GitHubRepository.model_validate(response.json())
+
+    def fetch_issues(
+        self, owner: str, repo: str, since: datetime | None = None
+    ) -> Iterator[GitHubIssue]:
+        path = f"/repos/{owner}/{repo}/issues"
+
+        params = {"state": "all", "sort": "updated", "direction": "desc", "per_page": 100}
+
+        if since is not None:
+            params["since"] = since.isoformat()
+
+        while path is not None:
+            response = self._get(path, params)
+
+            for item in response.json():
+                issue = GitHubIssue.model_validate(item)
+
+                if issue.pull_request is None:
+                    yield issue
+
+            next_link = response.links.get("next")
+
+            if next_link is not None:
+                path = next_link["url"]
+            else:
+                path = None
+
+            params = None
 
     def __enter__(self):
         return self
