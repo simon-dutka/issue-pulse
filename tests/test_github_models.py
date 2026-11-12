@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.github import GitHubIssue
+from app.schemas.github import GitHubComment, GitHubIssue
 
 
 @pytest.fixture
@@ -73,3 +73,30 @@ def test_issue_model_rejects_invalid_comments(issue_data):
 
     with pytest.raises(ValidationError):
         GitHubIssue.model_validate(issue_data)
+
+
+@pytest.fixture
+def comment_data():
+    data = {
+        "id": 1,
+        "issue_url": "https://api.github.com/repos/o/r/issues/42",
+        "created_at": "2026-01-01T10:00:00Z",
+        "author_association": "MEMBER",
+        "user": {"type": "User", "login": "alice"},
+        "body": "secret text",
+    }
+
+    return data
+
+
+def test_comment_model_extracts_issue_number(comment_data):
+    comment = GitHubComment.model_validate(comment_data)
+
+    assert comment.issue_number == 42
+
+
+def test_comment_model_drops_body_and_login(comment_data):
+    comment = GitHubComment.model_validate(comment_data)
+
+    assert "body" not in comment.model_dump()
+    assert comment.model_dump()["user"] == {"type": "User"}
