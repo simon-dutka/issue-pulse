@@ -361,3 +361,26 @@ def test_search_repositories_follows_pagination_and_respects_max_pages(
 
     assert [repository.full_name for repository in repositories] == expected_names
     assert len(requests) == len(expected_names)
+
+
+def test_search_repositories_sends_query_params(make_client):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+
+        return httpx.Response(
+            200,
+            json={"items": []},
+        )
+
+    client = make_client(handler)
+
+    list(client.search_repositories("topic:python stars:>10"))
+
+    params = requests[0].url.params
+
+    assert params["q"] == "topic:python stars:>10"
+    assert params["sort"] == "updated"
+    assert params["order"] == "desc"
+    assert params["per_page"] == "100"
