@@ -203,6 +203,9 @@ def test_fetch_issues_follows_pagination_and_skips_pull_requests(make_client):
     def handler(request):
         requests.append(request)
 
+        if len(requests) > 5:
+            raise AssertionError("pagination did not stop")
+
         page_number = request.url.params.get("page")
 
         if page_number == "2":
@@ -304,3 +307,80 @@ def test_get_raises_rate_limit_for_search_resource(make_client):
         client._get("/search")
 
     assert exc_info.value.reset_at == datetime.fromtimestamp(1700000060, tz=UTC)
+
+
+def make_repo(number):
+    data = {
+        "id": number,
+        "full_name": f"o/r{number}",
+        "html_url": f"https://github.com/o/r{number}",
+        "language": "Python",
+        "stargazers_count": 100,
+        "forks_count": 10,
+        "open_issues_count": 5,
+        "pushed_at": "2026-01-02T10:00:00Z",
+        "created_at": "2026-01-01T10:00:00Z",
+        "archived": False,
+        "has_issues": True,
+    }
+
+    return data
+
+
+@pytest.mark.parametrize(
+    "max_pages, expected_names",
+    [(None, ["o/r1", "o/r2"]), (1, ["o/r1"])],
+)
+def test_search_repositories_follows_pagination_and_respects_max_pages(
+    make_client, max_pages, expected_names
+):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+
+        if len(requests) > 5:
+            raise AssertionError("pagination did not stop")
+
+        page_number = request.url.params.get("page")
+
+        if page_number == "2":
+            return httpx.Response(200, json={"items": [make_repo(2)]})
+        else:
+            return httpx.Response(
+                200,
+                json={"items": [make_repo(1)]},
+                headers={
+                    "Link": '<https://api.github.com/search/repositories?q=x&page=2>; rel="next"'
+                },
+            )
+
+    client = make_client(handler)
+
+    repositories = list(client.search_repositories("topic:python", max_pages=max_pages))
+
+    assert [repository.full_name for repository in repositories] == expected_names
+    assert len(requests) == len(expected_names)
+
+
+def test_search_repositories_sends_query_params(make_client):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+
+        return httpx.Response(
+            200,
+            json={"items": []},
+        )
+
+    client = make_client(handler)
+
+    list(client.search_repositories("topic:python stars:>10"))
+
+    params = requests[0].url.params
+
+    assert params["q"] == "topic:python stars:>10"
+    assert params["sort"] == "updated"
+    assert params["order"] == "desc"
+    assert params["per_page"] == "100"

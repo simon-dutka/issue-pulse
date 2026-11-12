@@ -100,6 +100,31 @@ class GitHubClient:
 
             params = None
 
+    def search_repositories(
+        self, query: str, max_pages: int | None = None
+    ) -> Iterator[GitHubRepository]:
+        path = "/search/repositories"
+
+        params = {"q": query, "sort": "updated", "order": "desc", "per_page": 100}
+
+        pages = 0
+
+        while path is not None:
+            response = self._get(path, params)
+            pages += 1
+
+            for item in response.json()["items"]:
+                yield GitHubRepository.model_validate(item)
+
+            next_link = response.links.get("next")
+
+            if next_link is not None and (max_pages is None or pages < max_pages):
+                path = next_link["url"]
+            else:
+                path = None
+
+            params = None
+
     def __enter__(self):
         return self
 
