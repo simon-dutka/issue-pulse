@@ -34,6 +34,19 @@ class GitHubIssue(BaseModel):
         return value is not None
 
 
+class GitHubComment(BaseModel):
+    id: int
+    issue_url: str
+    created_at: datetime
+    author_association: str
+    user: GitHubUser
+
+    @property
+    def issue_number(self) -> int:
+        number_text = self.issue_url.rsplit("/", 1)[-1]
+        return int(number_text)
+
+
 class GitHubLicense(BaseModel):
     spdx_id: str | None
 

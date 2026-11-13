@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.schemas.github import GitHubIssue, GitHubRepository
+from app.schemas.github import GitHubComment, GitHubIssue, GitHubRepository
 from app.services.github_errors import GitHubAPIError, GitHubNotFound, RateLimitExceeded
 
 
@@ -119,6 +119,35 @@ class GitHubClient:
             next_link = response.links.get("next")
 
             if next_link is not None and (max_pages is None or pages < max_pages):
+                path = next_link["url"]
+            else:
+                path = None
+
+            params = None
+
+    def fetch_issue_comments(
+        self, owner: str, repo: str, since: datetime | None = None
+    ) -> Iterator[GitHubComment]:
+        path = f"/repos/{owner}/{repo}/issues/comments"
+
+        params = {
+            "sort": "created",
+            "direction": "asc",
+            "per_page": 100,
+        }
+
+        if since is not None:
+            params["since"] = since.isoformat()
+
+        while path is not None:
+            response = self._get(path, params)
+
+            for item in response.json():
+                yield GitHubComment.model_validate(item)
+
+            next_link = response.links.get("next")
+
+            if next_link is not None:
                 path = next_link["url"]
             else:
                 path = None
