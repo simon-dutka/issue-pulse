@@ -384,3 +384,47 @@ def test_search_repositories_sends_query_params(make_client):
     assert params["sort"] == "updated"
     assert params["order"] == "desc"
     assert params["per_page"] == "100"
+
+
+def make_comment(number, issue_number):
+    data = {
+        "id": number,
+        "issue_url": f"https://api.github.com/repos/o/r/issues/{issue_number}",
+        "created_at": "2026-01-01T10:00:00Z",
+        "author_association": "MEMBER",
+        "user": {"type": "User"},
+    }
+
+    return data
+
+
+def test_fetch_issue_comments_follows_pagination(make_client):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+
+        if len(requests) > 5:
+            raise AssertionError("pagination did not stop")
+
+        page_number = request.url.params.get("page")
+
+        if page_number == "2":
+            return httpx.Response(
+                200,
+                json=[make_comment(3, 7)],
+            )
+        else:
+            return httpx.Response(
+                200,
+                json=[make_comment(1, 5), make_comment(2, 6)],
+                headers={
+                    "Link": '<https://api.github.com/repos/o/r/issues/comments?page=2>; rel="next"'
+                },
+            )
+
+    client = make_client(handler)
+    numbers = [comment.issue_number for comment in client.fetch_issue_comments("o", "r")]
+
+    assert numbers == [5, 6, 7]
+    assert len(requests) == 2
