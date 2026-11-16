@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     github_api_url: str = "https://api.github.com"
     github_min_remaining_requests: int = 20
 
+    database_url: SecretStr | None = None
+
     # ignore unknown variables in .env
     model_config = SettingsConfigDict(
         env_file=".env",
