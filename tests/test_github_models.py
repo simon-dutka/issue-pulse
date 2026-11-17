@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.github import GitHubComment, GitHubIssue
+from app.schemas.github import GitHubComment, GitHubIssue, GitHubRepository
 
 
 @pytest.fixture
@@ -22,6 +22,26 @@ def issue_data():
         "labels": [{"name": "good first issue"}],
         "assignee": None,
         "body": "secret text",
+    }
+
+    return data
+
+
+@pytest.fixture
+def repo_data():
+    data = {
+        "id": 1,
+        "full_name": "psf/requests",
+        "html_url": "https://github.com/psf/requests",
+        "language": "Python",
+        "stargazers_count": 100,
+        "forks_count": 10,
+        "open_issues_count": 5,
+        "pushed_at": "2026-01-02T10:00:00Z",
+        "created_at": "2026-01-01T10:00:00Z",
+        "archived": False,
+        "has_issues": True,
+        "description": "ignored",
     }
 
     return data
@@ -148,3 +168,33 @@ def test_issue_model_accepts_missing_user(issue_data):
 
     assert issue.user is None
     assert issue.author_type is None
+
+
+def test_repository_model_exposes_license_spdx(repo_data):
+    repo_data["license"] = {"spdx_id": "MIT"}
+
+    repository = GitHubRepository.model_validate(repo_data)
+
+    assert repository.license_spdx == "MIT"
+
+
+def test_repository_model_license_spdx_is_none_without_license(repo_data):
+    repo_data["license"] = None
+
+    repository = GitHubRepository.model_validate(repo_data)
+
+    assert repository.license_spdx is None
+
+
+def test_repository_model_license_spdx_is_none_without_spdx_id(repo_data):
+    repo_data["license"] = {"spdx_id": None}
+
+    repository = GitHubRepository.model_validate(repo_data)
+
+    assert repository.license_spdx is None
+
+
+def test_repository_model_accepts_missing_license(repo_data):
+    repository = GitHubRepository.model_validate(repo_data)
+
+    assert repository.license_spdx is None
