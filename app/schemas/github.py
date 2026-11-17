@@ -76,3 +76,9 @@ class GitHubRepository(BaseModel):
     archived: bool
     has_issues: bool
     license: GitHubLicense | None = None
+
+    @property
+    def license_spdx(self) -> str | None:
+        if self.license is None:
+            return None
+        return self.license.spdx_id
