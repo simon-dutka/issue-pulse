@@ -23,7 +23,7 @@ class GitHubIssue(BaseModel):
     html_url: str
     author_association: str
     state_reason: str | None
-    user: GitHubUser
+    user: GitHubUser | None = None
     labels: list[GitHubLabel]
     assignee: bool
     pull_request: dict | None = None
@@ -33,18 +33,30 @@ class GitHubIssue(BaseModel):
     def assignee_to_bool(cls, value):
         return value is not None
 
+    @property
+    def author_type(self) -> str | None:
+        if self.user is None:
+            return None
+        return self.user.type
+
 
 class GitHubComment(BaseModel):
     id: int
     issue_url: str
     created_at: datetime
     author_association: str
-    user: GitHubUser
+    user: GitHubUser | None = None
 
     @property
     def issue_number(self) -> int:
         number_text = self.issue_url.rsplit("/", 1)[-1]
         return int(number_text)
+
+    @property
+    def author_type(self) -> str | None:
+        if self.user is None:
+            return None
+        return self.user.type
 
 
 class GitHubLicense(BaseModel):
