@@ -100,3 +100,51 @@ def test_comment_model_drops_body_and_login(comment_data):
 
     assert "body" not in comment.model_dump()
     assert comment.model_dump()["user"] == {"type": "User"}
+
+
+def test_comment_model_exposes_author_type(comment_data):
+    comment = GitHubComment.model_validate(comment_data)
+
+    assert comment.author_type == "User"
+
+
+def test_comment_model_accepts_null_user(comment_data):
+    comment_data["user"] = None
+
+    comment = GitHubComment.model_validate(comment_data)
+
+    assert comment.user is None
+    assert comment.author_type is None
+
+
+def test_comment_model_accepts_missing_user(comment_data):
+    comment_data.pop("user")
+
+    comment = GitHubComment.model_validate(comment_data)
+
+    assert comment.user is None
+    assert comment.author_type is None
+
+
+def test_issue_model_exposes_author_type(issue_data):
+    issue = GitHubIssue.model_validate(issue_data)
+
+    assert issue.author_type == "User"
+
+
+def test_issue_model_accepts_null_user(issue_data):
+    issue_data["user"] = None
+
+    issue = GitHubIssue.model_validate(issue_data)
+
+    assert issue.user is None
+    assert issue.author_type is None
+
+
+def test_issue_model_accepts_missing_user(issue_data):
+    issue_data.pop("user")
+
+    issue = GitHubIssue.model_validate(issue_data)
+
+    assert issue.user is None
+    assert issue.author_type is None
