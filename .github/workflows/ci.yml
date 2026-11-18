@@ -29,3 +29,5 @@ jobs:
 
       - name: Run tests
         run: pytest
+        env:
+          GITHUB_TOKEN: test-token
