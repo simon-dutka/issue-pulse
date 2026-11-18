@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     github_min_remaining_requests: int = 20
 
     database_url: SecretStr | None = None
+    test_database_url: SecretStr | None = None
 
     # ignore unknown variables in .env
     model_config = SettingsConfigDict(
