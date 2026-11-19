@@ -2,9 +2,9 @@ from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 
-from app.models import Issue, Repository
-from app.schemas.github import GitHubIssue, GitHubRepository
-from app.services.ingest import upsert_issues, upsert_repositories
+from app.models import Comment, Issue, Repository
+from app.schemas.github import GitHubComment, GitHubIssue, GitHubRepository
+from app.services.ingest import upsert_comments, upsert_issues, upsert_repositories
 
 FIRST_SYNC = datetime(2026, 1, 1, tzinfo=UTC)
 SECOND_SYNC = datetime(2026, 1, 2, tzinfo=UTC)
@@ -203,3 +203,63 @@ def test_upsert_issues_keeps_first_maintainer_response_at(db_session):
 
     assert issue.title == "New"
     assert issue.first_maintainer_response_at == FIRST_SYNC
+
+
+def make_comment(gh_id: int, issue_number: int, with_user: bool = True) -> GitHubComment:
+    data = {
+        "id": gh_id,
+        "issue_url": f"https://api.github.com/repos/o/r1/issues/{issue_number}",
+        "created_at": "2026-01-03T10:00:00Z",
+        "author_association": "MEMBER",
+        "user": {"type": "User"},
+    }
+
+    if not with_user:
+        data.pop("user")
+
+    return GitHubComment.model_validate(data)
+
+
+def test_upsert_comments_inserts_new_rows(db_session):
+    upsert_repositories(db_session, [make_repository(1, 10)], FIRST_SYNC)
+    upsert_issues(db_session, 1, [make_issue(100, 1)])
+    upsert_comments(db_session, 1, [make_comment(5000, 1)])
+
+    comment = db_session.get(Comment, 5000)
+
+    assert comment.issue_gh_id == 100
+    assert comment.author_type == "User"
+
+
+def test_upsert_comments_skips_comments_without_user(db_session):
+    upsert_repositories(db_session, [make_repository(1, 10)], FIRST_SYNC)
+    upsert_issues(db_session, 1, [make_issue(100, 1)])
+
+    skipped_count = upsert_comments(
+        db_session,
+        1,
+        [make_comment(5000, 1, with_user=False)],
+    )
+
+    assert skipped_count == 1
+    assert db_session.get(Comment, 5000) is None
+
+
+def test_upsert_comments_skips_comments_for_unknown_issues(db_session):
+    upsert_repositories(db_session, [make_repository(1, 10)], FIRST_SYNC)
+    upsert_issues(db_session, 1, [make_issue(100, 1)])
+
+    skipped_count = upsert_comments(db_session, 1, [make_comment(5000, 1), make_comment(5001, 999)])
+
+    assert skipped_count == 1
+    assert db_session.get(Comment, 5000) is not None
+    assert db_session.get(Comment, 5001) is None
+
+
+def test_upsert_comments_ignores_other_repository_issues(db_session):
+    upsert_repositories(db_session, [make_repository(1, 10), make_repository(2, 10)], FIRST_SYNC)
+    upsert_issues(db_session, 1, [make_issue(100, 1)])
+    upsert_issues(db_session, 2, [make_issue(200, 1)])
+    upsert_comments(db_session, 1, [make_comment(5000, 1)])
+
+    assert db_session.get(Comment, 5000).issue_gh_id == 100
