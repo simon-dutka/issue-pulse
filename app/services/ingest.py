@@ -1,11 +1,13 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.models import Comment, Issue, Repository
 from app.schemas.github import GitHubComment, GitHubIssue, GitHubRepository
+
+MAINTAINER_ASSOCIATIONS = ("OWNER", "MEMBER", "COLLABORATOR")
 
 
 def upsert_repositories(
@@ -137,3 +139,25 @@ def upsert_comments(session: Session, repository_gh_id: int, comments: list[GitH
     session.execute(stmt)
 
     return skipped_count
+
+
+def update_first_maintainer_responses(session: Session, repository_gh_id: int) -> None:
+    first_response = (
+        select(Comment.issue_gh_id, func.min(Comment.created_at).label("first_at"))
+        .join(Issue, Issue.issue_gh_id == Comment.issue_gh_id)
+        .where(
+            Issue.repository_gh_id == repository_gh_id,
+            Comment.author_association.in_(MAINTAINER_ASSOCIATIONS),
+            Comment.author_type == "User",
+        )
+        .group_by(Comment.issue_gh_id)
+        .subquery()
+    )
+
+    stmt = (
+        update(Issue)
+        .values(first_maintainer_response_at=first_response.c.first_at)
+        .where(Issue.issue_gh_id == first_response.c.issue_gh_id)
+    )
+
+    session.execute(stmt)
