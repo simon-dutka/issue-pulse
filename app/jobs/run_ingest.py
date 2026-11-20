@@ -8,10 +8,10 @@ from app.services.github_client import GitHubClient
 from app.services.github_errors import GitHubError, RateLimitExceeded
 from app.services.ingest import ingest_repository, upsert_repositories
 
-MAX_REPOSITORIES = 20
 MIN_HELP_WANTED = 3
-MIN_STARS = 200
 PUSHED_WITHIN = timedelta(days=30)
+STAR_BUCKETS = [(200, 999), (1000, 4999), (5000, None)]
+REPOSITORIES_PER_BUCKET = 7
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +21,17 @@ def main() -> None:
 
     now = datetime.now(UTC)
 
-    query = build_discovery_query(MIN_HELP_WANTED, (now - PUSHED_WITHIN).date(), MIN_STARS)
+    pushed_after = (now - PUSHED_WITHIN).date()
 
     with GitHubClient() as client:
-        found = list(client.search_repositories(query, max_pages=1))[:MAX_REPOSITORIES]
+        found = []
+
+        for min_stars, max_stars in STAR_BUCKETS:
+            query = build_discovery_query(MIN_HELP_WANTED, pushed_after, min_stars, max_stars)
+
+            found.extend(
+                list(client.search_repositories(query, max_pages=1))[:REPOSITORIES_PER_BUCKET]
+            )
 
         with session_scope() as session:
             upsert_repositories(session, found, now)
