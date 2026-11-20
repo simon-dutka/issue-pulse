@@ -1,4 +1,5 @@
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -6,8 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.models import Comment, Issue, Repository
 from app.schemas.github import GitHubComment, GitHubIssue, GitHubRepository
+from app.services.github_client import GitHubClient
 
 MAINTAINER_ASSOCIATIONS = ("OWNER", "MEMBER", "COLLABORATOR")
+INITIAL_WINDOW = timedelta(days=90)
+
+logger = logging.getLogger(__name__)
 
 
 def upsert_repositories(
@@ -161,3 +166,34 @@ def update_first_maintainer_responses(session: Session, repository_gh_id: int) -
     )
 
     session.execute(stmt)
+
+
+def ingest_repository(
+    session: Session, client: GitHubClient, repository: Repository, now: datetime
+) -> None:
+    if repository.issues_synced_at is None:
+        since = now - INITIAL_WINDOW
+    else:
+        since = repository.issues_synced_at
+
+    owner, name = repository.full_name.split("/")
+
+    issues = list(client.fetch_issues(owner, name, since=since))
+
+    skipped_issues = upsert_issues(session, repository.repository_gh_id, issues)
+
+    comments = list(client.fetch_issue_comments(owner, name, since=since))
+
+    skipped_comments = upsert_comments(session, repository.repository_gh_id, comments)
+
+    update_first_maintainer_responses(session, repository.repository_gh_id)
+
+    repository.issues_synced_at = now
+
+    logger.info(
+        "Ingested %s: %d issues, %d comments, %d skipped",
+        repository.full_name,
+        len(issues),
+        len(comments),
+        skipped_issues + skipped_comments,
+    )
