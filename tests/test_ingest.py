@@ -4,7 +4,12 @@ from sqlalchemy import func, select
 
 from app.models import Comment, Issue, Repository
 from app.schemas.github import GitHubComment, GitHubIssue, GitHubRepository
-from app.services.ingest import upsert_comments, upsert_issues, upsert_repositories
+from app.services.ingest import (
+    update_first_maintainer_responses,
+    upsert_comments,
+    upsert_issues,
+    upsert_repositories,
+)
 
 FIRST_SYNC = datetime(2026, 1, 1, tzinfo=UTC)
 SECOND_SYNC = datetime(2026, 1, 2, tzinfo=UTC)
@@ -205,13 +210,20 @@ def test_upsert_issues_keeps_first_maintainer_response_at(db_session):
     assert issue.first_maintainer_response_at == FIRST_SYNC
 
 
-def make_comment(gh_id: int, issue_number: int, with_user: bool = True) -> GitHubComment:
+def make_comment(
+    gh_id: int,
+    issue_number: int,
+    with_user: bool = True,
+    created_at: str = "2026-01-03T10:00:00Z",
+    author_association: str = "MEMBER",
+    user_type: str = "User",
+) -> GitHubComment:
     data = {
         "id": gh_id,
         "issue_url": f"https://api.github.com/repos/o/r1/issues/{issue_number}",
-        "created_at": "2026-01-03T10:00:00Z",
-        "author_association": "MEMBER",
-        "user": {"type": "User"},
+        "created_at": created_at,
+        "author_association": author_association,
+        "user": {"type": user_type},
     }
 
     if not with_user:
@@ -263,3 +275,65 @@ def test_upsert_comments_ignores_other_repository_issues(db_session):
     upsert_comments(db_session, 1, [make_comment(5000, 1)])
 
     assert db_session.get(Comment, 5000).issue_gh_id == 100
+
+
+def test_update_first_maintainer_responses_uses_earliest_maintainer_comment(db_session):
+    upsert_repositories(db_session, [make_repository(1, 10)], FIRST_SYNC)
+    upsert_issues(db_session, 1, [make_issue(100, 1)])
+
+    upsert_comments(
+        db_session,
+        1,
+        [
+            make_comment(5000, 1, created_at="2026-01-05T10:00:00Z"),
+            make_comment(5001, 1, created_at="2026-01-04T10:00:00Z"),
+        ],
+    )
+
+    update_first_maintainer_responses(db_session, 1)
+
+    issue = db_session.get(Issue, 100)
+
+    assert issue.first_maintainer_response_at == datetime(2026, 1, 4, 10, tzinfo=UTC)
+
+
+def test_update_first_maintainer_responses_ignores_non_maintainers_and_bots(db_session):
+    upsert_repositories(db_session, [make_repository(1, 10)], FIRST_SYNC)
+    upsert_issues(db_session, 1, [make_issue(100, 1)])
+
+    upsert_comments(
+        db_session,
+        1,
+        [
+            make_comment(5000, 1, created_at="2026-01-02T10:00:00Z", author_association="NONE"),
+            make_comment(5001, 1, created_at="2026-01-03T10:00:00Z", user_type="Bot"),
+            make_comment(5002, 1, created_at="2026-01-06T10:00:00Z"),
+        ],
+    )
+
+    update_first_maintainer_responses(db_session, 1)
+
+    issue = db_session.get(Issue, 100)
+
+    assert issue.first_maintainer_response_at == datetime(2026, 1, 6, 10, tzinfo=UTC)
+
+
+def test_update_first_maintainer_responses_leaves_null_without_maintainer_comment(db_session):
+    upsert_repositories(db_session, [make_repository(1, 10)], FIRST_SYNC)
+    upsert_issues(db_session, 1, [make_issue(100, 1)])
+
+    upsert_comments(
+        db_session,
+        1,
+        [
+            make_comment(
+                5000, 1, created_at="2026-01-05T10:00:00Z", author_association="CONTRIBUTOR"
+            ),
+        ],
+    )
+
+    update_first_maintainer_responses(db_session, 1)
+
+    issue = db_session.get(Issue, 100)
+
+    assert issue.first_maintainer_response_at is None
