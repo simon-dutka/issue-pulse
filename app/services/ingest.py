@@ -5,14 +5,27 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.models import Comment, Issue, Repository
+from app.models import Base, Comment, Issue, Repository
 from app.schemas.github import GitHubComment, GitHubIssue, GitHubRepository
 from app.services.github_client import GitHubClient
 
 MAINTAINER_ASSOCIATIONS = ("OWNER", "MEMBER", "COLLABORATOR")
 INITIAL_WINDOW = timedelta(days=90)
+BATCH_SIZE = 1000
 
 logger = logging.getLogger(__name__)
+
+
+def _upsert_rows(session: Session, model: type[Base], rows: list[dict], primary_key: str) -> None:
+    for start in range(0, len(rows), BATCH_SIZE):
+        batch = rows[start : start + BATCH_SIZE]
+
+        stmt = insert(model).values(batch)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[primary_key],
+            set_={name: stmt.excluded[name] for name in batch[0] if name != primary_key},
+        )
+        session.execute(stmt)
 
 
 def upsert_repositories(
@@ -40,12 +53,7 @@ def upsert_repositories(
         for repository in repositories
     ]
 
-    stmt = insert(Repository).values(rows)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=[Repository.repository_gh_id],
-        set_={name: stmt.excluded[name] for name in rows[0] if name != "repository_gh_id"},
-    )
-    session.execute(stmt)
+    _upsert_rows(session, Repository, rows, "repository_gh_id")
 
 
 def upsert_issues(session: Session, repository_gh_id: int, issues: list[GitHubIssue]) -> int:
@@ -88,12 +96,7 @@ def upsert_issues(session: Session, repository_gh_id: int, issues: list[GitHubIs
         for issue in unique_issues
     ]
 
-    stmt = insert(Issue).values(rows)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=[Issue.issue_gh_id],
-        set_={name: stmt.excluded[name] for name in rows[0] if name != "issue_gh_id"},
-    )
-    session.execute(stmt)
+    _upsert_rows(session, Issue, rows, "issue_gh_id")
 
     return skipped_count
 
@@ -135,13 +138,7 @@ def upsert_comments(session: Session, repository_gh_id: int, comments: list[GitH
         for comment in unique_comments
     ]
 
-    stmt = insert(Comment).values(rows)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=[Comment.comment_gh_id],
-        set_={name: stmt.excluded[name] for name in rows[0] if name != "comment_gh_id"},
-    )
-
-    session.execute(stmt)
+    _upsert_rows(session, Comment, rows, "comment_gh_id")
 
     return skipped_count
 

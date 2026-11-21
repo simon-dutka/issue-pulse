@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 
 from app.models import Comment, Issue, Repository
 from app.schemas.github import GitHubComment, GitHubIssue, GitHubRepository
+from app.services import ingest
 from app.services.ingest import (
     update_first_maintainer_responses,
     upsert_comments,
@@ -208,6 +209,16 @@ def test_upsert_issues_keeps_first_maintainer_response_at(db_session):
 
     assert issue.title == "New"
     assert issue.first_maintainer_response_at == FIRST_SYNC
+
+
+def test_upsert_issues_splits_rows_into_batches(db_session, monkeypatch):
+    monkeypatch.setattr(ingest, "BATCH_SIZE", 2)
+
+    upsert_repositories(db_session, [make_repository(1, 10)], FIRST_SYNC)
+
+    upsert_issues(db_session, 1, [make_issue(100 + i, i + 1) for i in range(5)])
+
+    assert db_session.scalar(select(func.count()).select_from(Issue)) == 5
 
 
 def make_comment(
